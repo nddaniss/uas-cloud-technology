@@ -22,12 +22,6 @@
                        class="w-full bg-[#F1F3F4] focus:bg-white focus:shadow-md border border-transparent focus:border-gray-200 pl-12 pr-4 py-2 rounded-full text-base outline-none transition-all">
             </div>
         </div>
-        
-        <!-- <div class="w-1/4 flex justify-end items-center gap-4">
-            <span class="material-icons-outlined text-gray-600 cursor-pointer">help_outline</span>
-            <span class="material-icons-outlined text-gray-600 cursor-pointer">settings</span>
-            <div class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">UAS</div>
-        </div> -->
     </header>
 
     <div class="flex flex-1 overflow-hidden">
@@ -53,28 +47,14 @@
                 <button onclick="navigateToRoot()" class="flex items-center gap-3 px-4 py-2 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
                     <span class="material-icons-outlined">folder_shared</span> Drive Saya
                 </button>
-                <!-- <div class="flex items-center gap-3 px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 cursor-not-allowed">
-                    <span class="material-icons-outlined">computer</span> Komputer
-                </div>
-                <div class="flex items-center gap-3 px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 cursor-not-allowed">
-                    <span class="material-icons-outlined">people_outline</span> Dibagikan kepada saya
-                </div>
-                <div class="flex items-center gap-3 px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 cursor-not-allowed">
-                    <span class="material-icons-outlined">schedule</span> Terbaru
-                </div> -->
             </nav>
         </aside>
 
         <main class="flex-1 p-6 overflow-y-auto flex flex-col gap-6">
             
             <div class="flex items-center justify-between">
-                <div class="text-lg font-medium text-gray-700 flex items-center gap-2">
-                    <span class="cursor-pointer hover:underline text-blue-600" onclick="navigateToRoot()">Drive Saya</span>
-                    <span id="breadcrumbSub" class="text-gray-400 text-sm font-normal"></span>
-                </div>
-                <div id="uxLoading" class="hidden flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full text-xs font-medium animate-pulse">
-                    <span class="material-icons-outlined text-sm spin animate-spin">sync</span> Mengunggah file ke MinIO...
-                </div>
+                <div id="breadcrumbContainer" class="text-lg font-medium text-gray-700 flex items-center gap-2 flex-wrap select-none">
+                    </div>
             </div>
 
             <div id="mainContent" class="flex flex-col gap-6">
@@ -91,15 +71,75 @@
         </main>
     </div>
 
+    <div id="uxLoading" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div class="bg-white px-6 py-5 rounded-xl shadow-2xl flex flex-col items-center gap-3 max-w-xs text-center">
+            <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-sm font-medium text-gray-700">Memproses data ke Cloud MinIO...</p>
+        </div>
+    </div>
+
+    <div id="toast" class="hidden fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-xl text-sm z-50 flex items-center gap-2 transition-all duration-300 transform translate-y-10 opacity-0">
+        <span class="material-icons-outlined text-green-400 text-base">check_circle</span>
+        <span id="toastMessage">Aksi berhasil!</span>
+    </div>
+
     <script>
         const API_URL = 'http://10.20.3.232:3000/api';
         
         let currentFolderId = null;
         let allFolders = [];
+        let breadcrumbStack = []; // Menyimpan struktur riwayat folder bertingkat
 
         function toggleNewMenu() {
             const el = document.getElementById('newMenuDropdown');
             el.classList.toggle('hidden');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const msg = document.getElementById('toastMessage');
+            msg.innerText = message;
+            
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.remove('translate-y-10', 'opacity-0');
+            }, 10);
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => toast.classList.add('hidden'), 300);
+            }, 3000);
+        }
+
+        // BREADCRUMB MANAGEMENT
+        function updateBreadcrumb() {
+            const container = document.getElementById('breadcrumbContainer');
+            let html = `<span class="cursor-pointer hover:underline text-blue-600 text-sm font-semibold" onclick="navigateToBreadcrumb(-1)">Drive Saya</span>`;
+            
+            breadcrumbStack.forEach((folder, index) => {
+                html += `
+                    <span class="text-gray-400 text-xs font-normal mx-1">></span>
+                    <span class="cursor-pointer hover:underline text-gray-700 text-sm font-medium max-w-[150px] truncate" 
+                          title="${folder.name}" 
+                          onclick="navigateToBreadcrumb(${index})">
+                        ${folder.name}
+                    </span>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function navigateToBreadcrumb(index) {
+            if (index === -1) {
+                breadcrumbStack = [];
+                currentFolderId = null;
+            } else {
+                currentFolderId = breadcrumbStack[index].id;
+                breadcrumbStack = breadcrumbStack.slice(0, index + 1);
+            }
+            document.getElementById('searchInput').value = ''; 
+            updateBreadcrumb();
+            loadContent();
         }
 
         // 1. READ DATA & PREVIEW
@@ -122,8 +162,17 @@
 
         function renderFolders(folders) {
             const grid = document.getElementById('folderGrid');
-            grid.innerHTML = folders.length === 0 ? '<p class="text-xs text-gray-400 col-span-4">Tidak ada folder</p>' : '';
             
+            if (folders.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-4 flex flex-col items-center justify-center p-6 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-gray-400">
+                        <span class="material-icons-outlined text-3xl mb-1">folder_open</span>
+                        <p class="text-xs">Tidak ada folder di direktori ini</p>
+                    </div>`;
+                return;
+            }
+            
+            grid.innerHTML = '';
             folders.forEach(f => {
                 let options = `<option value="">Pindah ke...</option><option value="root">Root</option>`;
                 allFolders.forEach(folderOpt => {
@@ -133,17 +182,36 @@
                 });
 
                 grid.innerHTML += `
-                    <div class="bg-white border border-gray-200 rounded-xl p-3 flex flex-col justify-between hover:bg-gray-50 shadow-xs cursor-pointer group transition h-28" onclick="enterFolder(${f.id}, '${f.name}')">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-3 truncate">
-                                <span class="material-icons-outlined text-yellow-500 text-2xl">folder</span>
-                                <span class="text-sm font-medium text-gray-700 truncate">${f.name}</span>
-                            </div>
+                    <div class="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between hover:bg-gray-50 hover:shadow-sm cursor-pointer group transition h-16 relative" onclick="enterFolder(${f.id}, '${f.name}')">
+                        <div class="flex items-center gap-3 truncate w-full pr-6">
+                            <span class="material-icons-outlined text-yellow-500 text-2xl flex-shrink-0">folder</span>
+                            <span class="text-sm font-medium text-gray-700 truncate">${f.name}</span>
                         </div>
-                        <div class="flex items-center gap-2 mt-2" onclick="event.stopPropagation()">
-                            <select onchange="moveItem('folder', ${f.id}, this.value)" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-500">${options}</select>
-                            <button onclick="renameItem('folder', ${f.id}, '${f.name}')" class="text-gray-400 hover:text-blue-600 text-xs"><span class="material-icons-outlined text-sm">edit</span></button>
-                            <button onclick="deleteItem('folder', ${f.id})" class="text-gray-400 hover:text-red-600 text-xs"><span class="material-icons-outlined text-sm">delete</span></button>
+                        
+                        <div class="relative flex-shrink-0" onclick="event.stopPropagation()">
+                            <button onclick="toggleActionMenu('folder', ${f.id}, event)" class="text-gray-400 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 transition">
+                                <span class="material-icons-outlined text-lg">more_vert</span>
+                            </button>
+                            
+                            <div id="dropdown-folder-${f.id}" class="hidden dropdown-menu absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30">
+                                <button onclick="renameItem('folder', ${f.id}, '${f.name}')" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-gray-700">
+                                    <span class="material-icons-outlined text-sm text-gray-500">edit</span> Ganti nama
+                                </button>
+                                
+                                <div class="px-3 py-1 hover:bg-gray-100 flex flex-col gap-0.5">
+                                    <div class="flex items-center gap-2 text-xs text-gray-700 select-none">
+                                        <span class="material-icons-outlined text-sm text-gray-500">drive_file_move</span> Pindah lokasi
+                                    </div>
+                                    <select onchange="moveItem('folder', ${f.id}, this.value)" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-500 w-full mt-1 outline-none">
+                                        ${options}
+                                    </select>
+                                </div>
+                                
+                                <hr class="my-1 border-gray-100">
+                                <button onclick="deleteItem('folder', ${f.id})" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-red-600 font-medium">
+                                    <span class="material-icons-outlined text-sm text-red-500">delete</span> Hapus
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -152,54 +220,104 @@
 
         function renderFiles(files) {
             const grid = document.getElementById('fileGrid');
-            grid.innerHTML = files.length === 0 ? '<p class="text-xs text-gray-400 col-span-4">Tidak ada berkas</p>' : '';
+            
+            if (files.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-4 flex flex-col items-center justify-center p-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-gray-400">
+                        <span class="material-icons-outlined text-3xl mb-1">cloud_upload</span>
+                        <p class="text-xs">Tidak ada berkas. Klik tombol Baru untuk mengunggah.</p>
+                    </div>`;
+                return;
+            }
 
+            grid.innerHTML = '';
             files.forEach(file => {
                 const isImg = file.mime_type && file.mime_type.startsWith('image/');
-                const isVideo = file.mime_type && file.mime_type.startsWith('video/'); // Deteksi Video
+                const isVideo = file.mime_type && file.mime_type.startsWith('video/');
 
                 let previewHtml = '';
                 
                 if (isImg) {
-                    previewHtml = `<img src="${API_URL}/view/${file.minio_key}" class="w-full h-20 object-cover rounded-md border border-gray-100 group-hover:opacity-90 cursor-zoom-in" onclick="window.open('${API_URL}/view/${file.minio_key}', '_blank')">`;
+                    previewHtml = `<img src="${API_URL}/view/${file.minio_key}" class="w-full h-24 object-cover rounded-md border border-gray-100 group-hover:opacity-90 cursor-zoom-in" onclick="window.open('${API_URL}/view/${file.minio_key}', '_blank')">`;
                 } else if (isVideo) {
                     previewHtml = `
-                        <div class="relative w-full h-20 bg-black rounded-md overflow-hidden group/vid border border-gray-100">
+                        <div class="relative w-full h-24 bg-black rounded-md overflow-hidden group/vid border border-gray-100">
                             <video src="${API_URL}/view/${file.minio_key}" class="w-full h-full object-cover opacity-60" preload="metadata"></video>
                             <div class="absolute inset-0 flex items-center justify-center bg-black/10 group-hover/vid:bg-black/40 transition cursor-pointer" onclick="window.open('${API_URL}/view/${file.minio_key}', '_blank')">
                                 <span class="material-icons-outlined text-white text-3xl opacity-90 group-hover/vid:scale-110 transition-all">play_circle_outline</span>
                             </div>
                         </div>`;
                 } else {
-                    previewHtml = `<div class="w-full h-20 bg-gray-50 rounded-md flex items-center justify-center border border-gray-100"><span class="material-icons-outlined text-3xl text-gray-400">description</span></div>`;
+                    previewHtml = `<div class="w-full h-24 bg-gray-50 rounded-md flex items-center justify-center border border-gray-100"><span class="material-icons-outlined text-3xl text-gray-400">description</span></div>`;
                 }
 
                 let options = `<option value="">Pindah ke...</option><option value="root">Root</option>`;
                 allFolders.forEach(folderOpt => { options += `<option value="${folderOpt.id}">${folderOpt.name}</option>`; });
 
                 grid.innerHTML += `
-                    <div class="bg-white border border-gray-200 rounded-xl p-3 flex flex-col justify-between hover:bg-gray-50 shadow-xs group transition h-40">
+                    <div class="bg-white border border-gray-200 rounded-xl p-3 flex flex-col justify-between hover:bg-gray-50 hover:shadow-sm group transition h-40 relative">
                         <div class="w-full mb-2">${previewHtml}</div>
-                        <div class="flex items-center justify-between w-full">
-                            <span class="text-xs font-medium text-gray-600 truncate w-3/4" title="${file.name}">${file.name}</span>
-                            <div class="flex gap-1" onclick="event.stopPropagation()">
-                                <button onclick="renameItem('file', ${file.id}, '${file.name}')" class="text-gray-400 hover:text-blue-600"><span class="material-icons-outlined text-xs">edit</span></button>
-                                <button onclick="deleteItem('file', ${file.id})" class="text-gray-400 hover:text-red-600"><span class="material-icons-outlined text-xs">delete</span></button>
+                        
+                        <div class="flex items-center justify-between w-full gap-2">
+                            <span class="text-xs font-medium text-gray-600 truncate w-full" title="${file.name}">${file.name}</span>
+                            
+                            <div class="relative flex-shrink-0" onclick="event.stopPropagation()">
+                                <button onclick="toggleActionMenu('file', ${file.id}, event)" class="text-gray-400 hover:text-gray-700 p-0.5 rounded-full hover:bg-gray-100 transition">
+                                    <span class="material-icons-outlined text-base">more_vert</span>
+                                </button>
+                                
+                                <div id="dropdown-file-${file.id}" class="hidden dropdown-menu absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30">
+                                    <button onclick="renameItem('file', ${file.id}, '${file.name}')" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-gray-700">
+                                        <span class="material-icons-outlined text-sm text-gray-500">edit</span> Ganti nama
+                                    </button>
+                                    
+                                    <div class="px-3 py-1 hover:bg-gray-100 flex flex-col gap-0.5">
+                                        <div class="flex items-center gap-2 text-xs text-gray-700 select-none">
+                                            <span class="material-icons-outlined text-sm text-gray-500">drive_file_move</span> Pindah lokasi
+                                        </div>
+                                        <select onchange="moveItem('file', ${file.id}, this.value)" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-500 w-full mt-1 outline-none">
+                                            ${options}
+                                        </select>
+                                    </div>
+                                    
+                                    <hr class="my-1 border-gray-100">
+                                    <button onclick="deleteItem('file', ${file.id})" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-red-600 font-medium">
+                                        <span class="material-icons-outlined text-sm text-red-500">delete</span> Hapus
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="mt-1">
-                            <select onchange="moveItem('file', ${file.id}, this.value)" class="text-[9px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-400 w-full">${options}</select>
                         </div>
                     </div>
                 `;
             });
         }
 
+        // TRIGGER DROPDOWN CONTROLLER
+        function toggleActionMenu(type, id, event) {
+            document.querySelectorAll('.dropdown-menu').forEach(el => {
+                if(el.id !== `dropdown-${type}-${id}`) {
+                    el.classList.add('hidden');
+                }
+            });
+            const targetDropdown = document.getElementById(`dropdown-${type}-${id}`);
+            targetDropdown.classList.toggle('hidden');
+        }
+
+        // Tutup otomatis menu jika klik di area kosong manapun
+        window.addEventListener('click', function(e) {
+            if (!e.target.closest('.relative')) {
+                document.querySelectorAll('.dropdown-menu').forEach(el => el.classList.add('hidden'));
+            }
+        });
+
         // 2. CREATE FOLDER
         async function triggerCreateFolder() {
             toggleNewMenu();
             const name = prompt("Masukkan nama folder baru:");
             if (!name || !name.trim()) return;
+
+            const loading = document.getElementById('uxLoading');
+            loading.classList.remove('hidden');
 
             try {
                 await fetch(`${API_URL}/folders`, {
@@ -208,7 +326,12 @@
                     body: JSON.stringify({ name: name, parentId: currentFolderId })
                 });
                 await loadContent();
-            } catch (e) { console.error("Error buat folder:", e); }
+                showToast("Folder baru sukses dibuat! 📁");
+            } catch (e) { 
+                console.error("Error buat folder:", e); 
+            } finally {
+                loading.classList.add('hidden');
+            }
         }
 
         // 3. CREATE FILES / UPLOAD
@@ -230,9 +353,12 @@
                 await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
                 input.value = '';
                 await loadContent();
-            } catch (e) { console.error("Error upload:", e); }
-            
-            loading.classList.add('hidden');
+                showToast("Berkas berhasil diupload! 🚀");
+            } catch (e) { 
+                console.error("Error upload:", e); 
+            } finally {
+                loading.classList.add('hidden');
+            }
         }
 
         // 4. UPDATE (Rename)
@@ -240,31 +366,63 @@
             const name = prompt(`Ubah nama menjadi:`, oldName);
             if (!name || !name.trim() || name === oldName) return;
 
-            await fetch(`${API_URL}/rename`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type, id, name })
-            });
-            loadContent();
+            const loading = document.getElementById('uxLoading');
+            loading.classList.remove('hidden');
+
+            try {
+                await fetch(`${API_URL}/rename`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, id, name })
+                });
+                await loadContent();
+                showToast("Item berhasil diganti nama! ✏️");
+            } catch (e) {
+                console.error(e);
+            } finally {
+                loading.classList.add('hidden');
+            }
         }
 
         // 5. UPDATE (Move Item)
         async function moveItem(type, id, targetFolderId) {
             if (!targetFolderId) return;
-            await fetch(`${API_URL}/move`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type, id, targetFolderId })
-            });
-            loadContent();
+
+            const loading = document.getElementById('uxLoading');
+            loading.classList.remove('hidden');
+
+            try {
+                await fetch(`${API_URL}/move`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, id, targetFolderId })
+                });
+                await loadContent();
+                showToast("Item berhasil dipindahkan lokasi! 🚚");
+            } catch (e) {
+                console.error(e);
+            } finally {
+                loading.classList.add('hidden');
+            }
         }
 
         // 6. DELETE
         async function deleteItem(type, id) {
             if (!confirm(`Hapus ${type} ini secara permanen dari server?`)) return;
-            const endpoint = type === 'folder' ? `${API_URL}/folders/${id}` : `${API_URL}/files/${id}`;
-            await fetch(endpoint, { method: 'DELETE' });
-            loadContent();
+
+            const loading = document.getElementById('uxLoading');
+            loading.classList.remove('hidden');
+
+            try {
+                const endpoint = type === 'folder' ? `${API_URL}/folders/${id}` : `${API_URL}/files/${id}`;
+                await fetch(endpoint, { method: 'DELETE' });
+                await loadContent();
+                showToast("Item berhasil dihapus permanen! 🗑️");
+            } catch (e) {
+                console.error(e);
+            } finally {
+                loading.classList.add('hidden');
+            }
         }
 
         // 7. SEARCH & NAVIGASI
@@ -273,19 +431,25 @@
         }
 
         function enterFolder(id, name) {
+            const exists = breadcrumbStack.some(folder => folder.id === id);
+            if (!exists) {
+                breadcrumbStack.push({ id: id, name: name });
+            }
             currentFolderId = id;
-            document.getElementById('breadcrumbSub').innerText = `> ${name}`;
+            updateBreadcrumb();
             loadContent();
         }
 
         function navigateToRoot() {
+            breadcrumbStack = [];
             currentFolderId = null;
-            document.getElementById('breadcrumbSub').innerText = '';
             document.getElementById('searchInput').value = '';
+            updateBreadcrumb();
             loadContent();
         }
 
-        // Load Awal
+        // Initialize App
+        updateBreadcrumb();
         loadContent();
     </script>
 </body>
