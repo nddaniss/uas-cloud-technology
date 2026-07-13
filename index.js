@@ -16,8 +16,6 @@ app.get('/', (req, res) => {
 // ==========================================
 // 1. KONEKSI & AUTO-CREATE BUCKET MINIO
 // ==========================================
-// PENTING: Gunakan IP LAN laptopmu (contoh: 10.20.2.137) agar bisa diakses oleh device lain di jaringan Wi-Fi yang sama.
-// Jika hanya ingin ditest sendirian di laptop ini tanpa Wi-Fi, ganti kembali menjadi 'localhost'.
 const minioClient = new Minio.Client({
     endPoint: 'localhost',
     port: 9010,
@@ -79,7 +77,6 @@ app.get('/api/folders', (req, res) => {
     const search = req.query.search ? `%${req.query.search}%` : null;
 
     if (search) {
-        // Jika sedang mencari, cari secara global di seluruh folder/file tanpa filter parent_id
         db.all('SELECT * FROM folders WHERE name LIKE ?', [search], (err, folders) => {
             if (err) return res.status(500).json({ error: err.message });
             db.all('SELECT * FROM files WHERE name LIKE ?', [search], (err, files) => {
@@ -88,7 +85,6 @@ app.get('/api/folders', (req, res) => {
             });
         });
     } else {
-        // Tampilan navigasi struktur normal (hirarki folder)
         const folderQuery = parentId ? 'SELECT * FROM folders WHERE parent_id = ?' : 'SELECT * FROM folders WHERE parent_id IS NULL';
         const fileQuery = parentId ? 'SELECT * FROM files WHERE folder_id = ?' : 'SELECT * FROM files WHERE folder_id IS NULL';
         const params = parentId ? [parentId] : [];
@@ -125,12 +121,18 @@ app.get('/api/view/:key', (req, res) => {
     });
 });
 
-// [CREATE] Buat Folder Baru
+// [CREATE] Buat Folder Baru (SUDAH DIPERBAIKI UNTUK NESTED FOLDER)
 app.post('/api/folders', (req, res) => {
-    const { name, parent_id } = req.body;
-    db.run('INSERT INTO folders (name, parent_id) VALUES (?, ?)', [name, parent_id || null], function(err) {
+    const { name, parent_id, parentId } = req.body;
+    
+    // Validasi input: mendukung penamaan parent_id (snake_case) maupun parentId (camelCase)
+    const actualParent = (parent_id === 'root' || parentId === 'root') 
+        ? null 
+        : (parent_id || parentId || null);
+
+    db.run('INSERT INTO folders (name, parent_id) VALUES (?, ?)', [name, actualParent], function(err) {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ id: this.lastID, name, parent_id });
+        res.json({ id: this.lastID, name, parent_id: actualParent });
     });
 });
 
@@ -143,7 +145,6 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
     
     try {
         for (let file of req.files) {
-            // Gunakan timestamp unik agar penamaan file tidak bentrok saat banyak user upload berbarengan
             const minioKey = `${Date.now()}-${file.originalname}`;
             await minioClient.putObject(BUCKET_NAME, minioKey, file.buffer, file.size, { 
                 'Content-Type': file.mimetype 
@@ -216,9 +217,11 @@ app.delete('/api/files/:id', (req, res) => {
         }
     });
 });
+
 app.get('/api', (req, res) => {
     res.redirect('/');
 });
+
 app.listen(3000, '0.0.0.0', () => {
     console.log('==================================================');
     console.log('Backend Mini Google Drive Berjalan!');
