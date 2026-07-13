@@ -71,6 +71,19 @@
         </main>
     </div>
 
+    <div id="previewModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 animate-fade-in" onclick="closePreviewModal()">
+        <div class="absolute top-4 right-4 flex items-center gap-4 z-50">
+            <span id="modalFileName" class="text-white text-sm font-medium truncate max-w-xs">Nama Berkas</span>
+            <button onclick="closePreviewModal()" class="text-gray-300 hover:text-white p-2 rounded-full hover:bg-white/10 transition">
+                <span class="material-icons-outlined text-2xl">close</span>
+            </button>
+        </div>
+        <div class="w-full max-w-4xl max-h-[85vh] p-4 flex items-center justify-center" onclick="event.stopPropagation()">
+            <div id="modalContentContainer" class="w-full h-full flex items-center justify-center">
+                </div>
+        </div>
+    </div>
+
     <div id="uxLoading" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
         <div class="bg-white px-6 py-5 rounded-xl shadow-2xl flex flex-col items-center gap-3 max-w-xs text-center">
             <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -88,7 +101,7 @@
         
         let currentFolderId = null;
         let allFolders = [];
-        let breadcrumbStack = []; // Menyimpan struktur riwayat folder bertingkat
+        let breadcrumbStack = [];
 
         function toggleNewMenu() {
             const el = document.getElementById('newMenuDropdown');
@@ -111,7 +124,7 @@
             }, 3000);
         }
 
-        // BREADCRUMB MANAGEMENT
+        // BREADCRUMB
         function updateBreadcrumb() {
             const container = document.getElementById('breadcrumbContainer');
             let html = `<span class="cursor-pointer hover:underline text-blue-600 text-sm font-semibold" onclick="navigateToBreadcrumb(-1)">Drive Saya</span>`;
@@ -142,7 +155,7 @@
             loadContent();
         }
 
-        // 1. READ DATA & PREVIEW
+        // LOAD DATA
         async function loadContent(searchQuery = '') {
             try {
                 const resFolders = await fetch(`${API_URL}/all-folders`);
@@ -162,7 +175,6 @@
 
         function renderFolders(folders) {
             const grid = document.getElementById('folderGrid');
-            
             if (folders.length === 0) {
                 grid.innerHTML = `
                     <div class="col-span-4 flex flex-col items-center justify-center p-6 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-gray-400">
@@ -197,7 +209,6 @@
                                 <button onclick="renameItem('folder', ${f.id}, '${f.name}')" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-gray-700">
                                     <span class="material-icons-outlined text-sm text-gray-500">edit</span> Ganti nama
                                 </button>
-                                
                                 <div class="px-3 py-1 hover:bg-gray-100 flex flex-col gap-0.5">
                                     <div class="flex items-center gap-2 text-xs text-gray-700 select-none">
                                         <span class="material-icons-outlined text-sm text-gray-500">drive_file_move</span> Pindah lokasi
@@ -206,21 +217,18 @@
                                         ${options}
                                     </select>
                                 </div>
-                                
                                 <hr class="my-1 border-gray-100">
                                 <button onclick="deleteItem('folder', ${f.id})" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-red-600 font-medium">
                                     <span class="material-icons-outlined text-sm text-red-500">delete</span> Hapus
                                 </button>
                             </div>
                         </div>
-                    </div>
-                `;
+                    </div>`;
             });
         }
 
         function renderFiles(files) {
             const grid = document.getElementById('fileGrid');
-            
             if (files.length === 0) {
                 grid.innerHTML = `
                     <div class="col-span-4 flex flex-col items-center justify-center p-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-gray-400">
@@ -235,20 +243,21 @@
                 const isImg = file.mime_type && file.mime_type.startsWith('image/');
                 const isVideo = file.mime_type && file.mime_type.startsWith('video/');
 
-                let previewHtml = '';
+                let previewCardHtml = '';
                 
+                // Perubahan di sini: Mengganti window.open dengan openPreviewModal bawaan local modal
                 if (isImg) {
-                    previewHtml = `<img src="${API_URL}/view/${file.minio_key}" class="w-full h-24 object-cover rounded-md border border-gray-100 group-hover:opacity-90 cursor-zoom-in" onclick="window.open('${API_URL}/view/${file.minio_key}', '_blank')">`;
+                    previewCardHtml = `<img src="${API_URL}/view/${file.minio_key}" class="w-full h-24 object-cover rounded-md border border-gray-100 group-hover:opacity-90 cursor-zoom-in" onclick="openPreviewModal('${file.name}', '${file.mime_type}', '${file.minio_key}')">`;
                 } else if (isVideo) {
-                    previewHtml = `
-                        <div class="relative w-full h-24 bg-black rounded-md overflow-hidden group/vid border border-gray-100">
+                    previewCardHtml = `
+                        <div class="relative w-full h-24 bg-black rounded-md overflow-hidden group/vid border border-gray-100 cursor-pointer" onclick="openPreviewModal('${file.name}', '${file.mime_type}', '${file.minio_key}')">
                             <video src="${API_URL}/view/${file.minio_key}" class="w-full h-full object-cover opacity-60" preload="metadata"></video>
-                            <div class="absolute inset-0 flex items-center justify-center bg-black/10 group-hover/vid:bg-black/40 transition cursor-pointer" onclick="window.open('${API_URL}/view/${file.minio_key}', '_blank')">
+                            <div class="absolute inset-0 flex items-center justify-center bg-black/10 group-hover/vid:bg-black/40 transition">
                                 <span class="material-icons-outlined text-white text-3xl opacity-90 group-hover/vid:scale-110 transition-all">play_circle_outline</span>
                             </div>
                         </div>`;
                 } else {
-                    previewHtml = `<div class="w-full h-24 bg-gray-50 rounded-md flex items-center justify-center border border-gray-100"><span class="material-icons-outlined text-3xl text-gray-400">description</span></div>`;
+                    previewCardHtml = `<div class="w-full h-24 bg-gray-50 rounded-md flex items-center justify-center border border-gray-100 cursor-zoom-in" onclick="openPreviewModal('${file.name}', '${file.mime_type}', '${file.minio_key}')"><span class="material-icons-outlined text-3xl text-gray-400">description</span></div>`;
                 }
 
                 let options = `<option value="">Pindah ke...</option><option value="root">Root</option>`;
@@ -256,10 +265,10 @@
 
                 grid.innerHTML += `
                     <div class="bg-white border border-gray-200 rounded-xl p-3 flex flex-col justify-between hover:bg-gray-50 hover:shadow-sm group transition h-40 relative">
-                        <div class="w-full mb-2">${previewHtml}</div>
+                        <div class="w-full mb-2">${previewCardHtml}</div>
                         
                         <div class="flex items-center justify-between w-full gap-2">
-                            <span class="text-xs font-medium text-gray-600 truncate w-full" title="${file.name}">${file.name}</span>
+                            <span class="text-xs font-medium text-gray-600 truncate w-full cursor-zoom-in" title="${file.name}" onclick="openPreviewModal('${file.name}', '${file.mime_type}', '${file.minio_key}')">${file.name}</span>
                             
                             <div class="relative flex-shrink-0" onclick="event.stopPropagation()">
                                 <button onclick="toggleActionMenu('file', ${file.id}, event)" class="text-gray-400 hover:text-gray-700 p-0.5 rounded-full hover:bg-gray-100 transition">
@@ -270,7 +279,6 @@
                                     <button onclick="renameItem('file', ${file.id}, '${file.name}')" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-gray-700">
                                         <span class="material-icons-outlined text-sm text-gray-500">edit</span> Ganti nama
                                     </button>
-                                    
                                     <div class="px-3 py-1 hover:bg-gray-100 flex flex-col gap-0.5">
                                         <div class="flex items-center gap-2 text-xs text-gray-700 select-none">
                                             <span class="material-icons-outlined text-sm text-gray-500">drive_file_move</span> Pindah lokasi
@@ -279,7 +287,6 @@
                                             ${options}
                                         </select>
                                     </div>
-                                    
                                     <hr class="my-1 border-gray-100">
                                     <button onclick="deleteItem('file', ${file.id})" class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-xs text-red-600 font-medium">
                                         <span class="material-icons-outlined text-sm text-red-500">delete</span> Hapus
@@ -287,12 +294,51 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                `;
+                    </div>`;
             });
         }
 
-        // TRIGGER DROPDOWN CONTROLLER
+        // FUNGSI UNTUK LOGIKA PRATINJAU MODAL DALAM SATU TAB
+        function openPreviewModal(name, mimeType, minioKey) {
+            const modal = document.getElementById('previewModal');
+            const titleEl = document.getElementById('modalFileName');
+            const container = document.getElementById('modalContentContainer');
+            const fileUrl = `${API_URL}/view/${minioKey}`;
+            
+            titleEl.innerText = name;
+            container.innerHTML = ''; // bersihkan konten sebelumnya
+
+            if (mimeType && mimeType.startsWith('image/')) {
+                container.innerHTML = `<img src="${fileUrl}" class="max-w-full max-h-[75vh] object-contain rounded-md shadow-2xl">`;
+            } else if (mimeType && mimeType.startsWith('video/')) {
+                container.innerHTML = `<video src="${fileUrl}" controls autoplay class="max-w-full max-h-[75vh] rounded-md shadow-2xl bg-black"></video>`;
+            } else if (mimeType && mimeType === 'application/pdf') {
+                container.innerHTML = `<iframe src="${fileUrl}" class="w-full h-[75vh] rounded-md shadow-2xl bg-white" frameborder="0"></iframe>`;
+            } else {
+                // Untuk file teks biasa atau format file umum lainnya
+                container.innerHTML = `
+                    <div class="bg-white/10 backdrop-blur-md border border-white/20 p-8 rounded-2xl flex flex-col items-center gap-4 text-center text-white max-w-sm">
+                        <span class="material-icons-outlined text-5xl">description</span>
+                        <div>
+                            <p class="font-medium text-sm truncate max-w-[250px]">${name}</p>
+                            <p class="text-xs text-gray-400 mt-1">Pratinjau tidak tersedia untuk format ini</p>
+                        </div>
+                        <a href="${API_URL}/view/${minioKey}" target="_blank" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 py-2 rounded-full transition shadow-md">
+                            Unduh File
+                        </a>
+                    </div>`;
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closePreviewModal() {
+            const modal = document.getElementById('previewModal');
+            const container = document.getElementById('modalContentContainer');
+            container.innerHTML = ''; // matikan streaming video atau memori berkas saat ditutup
+            modal.classList.add('hidden');
+        }
+
+        // TOGGLE DROPDOWN CONTROLLER
         function toggleActionMenu(type, id, event) {
             document.querySelectorAll('.dropdown-menu').forEach(el => {
                 if(el.id !== `dropdown-${type}-${id}`) {
@@ -303,22 +349,19 @@
             targetDropdown.classList.toggle('hidden');
         }
 
-        // Tutup otomatis menu jika klik di area kosong manapun
         window.addEventListener('click', function(e) {
             if (!e.target.closest('.relative')) {
                 document.querySelectorAll('.dropdown-menu').forEach(el => el.classList.add('hidden'));
             }
         });
 
-        // 2. CREATE FOLDER
+        // ACTIONS (CREATE FOLDER, UPLOAD, RENAME, MOVE, DELETE, SEARCH)
         async function triggerCreateFolder() {
             toggleNewMenu();
             const name = prompt("Masukkan nama folder baru:");
             if (!name || !name.trim()) return;
-
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
-
             try {
                 await fetch(`${API_URL}/folders`, {
                     method: 'POST',
@@ -327,48 +370,31 @@
                 });
                 await loadContent();
                 showToast("Folder baru sukses dibuat! 📁");
-            } catch (e) { 
-                console.error("Error buat folder:", e); 
-            } finally {
-                loading.classList.add('hidden');
-            }
+            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
         }
 
-        // 3. CREATE FILES / UPLOAD
         async function uploadFiles() {
             toggleNewMenu();
             const input = document.getElementById('fileInput');
             if (input.files.length === 0) return;
-
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
-
             const formData = new FormData();
             formData.append('folderId', currentFolderId || 'root');
-            for (let i = 0; i < input.files.length; i++) {
-                formData.append('files', input.files[i]);
-            }
-
+            for (let i = 0; i < input.files.length; i++) { formData.append('files', input.files[i]); }
             try {
                 await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
                 input.value = '';
                 await loadContent();
                 showToast("Berkas berhasil diupload! 🚀");
-            } catch (e) { 
-                console.error("Error upload:", e); 
-            } finally {
-                loading.classList.add('hidden');
-            }
+            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
         }
 
-        // 4. UPDATE (Rename)
         async function renameItem(type, id, oldName) {
             const name = prompt(`Ubah nama menjadi:`, oldName);
             if (!name || !name.trim() || name === oldName) return;
-
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
-
             try {
                 await fetch(`${API_URL}/rename`, {
                     method: 'PUT',
@@ -377,20 +403,13 @@
                 });
                 await loadContent();
                 showToast("Item berhasil diganti nama! ✏️");
-            } catch (e) {
-                console.error(e);
-            } finally {
-                loading.classList.add('hidden');
-            }
+            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
         }
 
-        // 5. UPDATE (Move Item)
         async function moveItem(type, id, targetFolderId) {
             if (!targetFolderId) return;
-
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
-
             try {
                 await fetch(`${API_URL}/move`, {
                     method: 'PUT',
@@ -399,42 +418,26 @@
                 });
                 await loadContent();
                 showToast("Item berhasil dipindahkan lokasi! 🚚");
-            } catch (e) {
-                console.error(e);
-            } finally {
-                loading.classList.add('hidden');
-            }
+            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
         }
 
-        // 6. DELETE
         async function deleteItem(type, id) {
             if (!confirm(`Hapus ${type} ini secara permanen dari server?`)) return;
-
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
-
             try {
                 const endpoint = type === 'folder' ? `${API_URL}/folders/${id}` : `${API_URL}/files/${id}`;
                 await fetch(endpoint, { method: 'DELETE' });
                 await loadContent();
                 showToast("Item berhasil dihapus permanen! 🗑️");
-            } catch (e) {
-                console.error(e);
-            } finally {
-                loading.classList.add('hidden');
-            }
+            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
         }
 
-        // 7. SEARCH & NAVIGASI
-        function handleSearch(val) {
-            loadContent(val.trim());
-        }
+        function handleSearch(val) { loadContent(val.trim()); }
 
         function enterFolder(id, name) {
             const exists = breadcrumbStack.some(folder => folder.id === id);
-            if (!exists) {
-                breadcrumbStack.push({ id: id, name: name });
-            }
+            if (!exists) { breadcrumbStack.push({ id: id, name: name }); }
             currentFolderId = id;
             updateBreadcrumb();
             loadContent();
@@ -448,7 +451,6 @@
             loadContent();
         }
 
-        // Initialize App
         updateBreadcrumb();
         loadContent();
     </script>
