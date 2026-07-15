@@ -14,7 +14,7 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// 1. KONEKSI & AUTO-CREATE BUCKET MINIO
+// 1. KONEKSI & BUCKET MINIO
 // ==========================================
 const minioClient = new Minio.Client({
     endPoint: 'localhost',
@@ -71,7 +71,7 @@ const upload = multer({ storage: storage });
 // 3. API ROUTES
 // ==========================================
 
-// [READ] Ambil konten berdasarkan folder_id + Fitur SEARCH (Poin Bonus Rubrik)
+// [READ] Ambil konten berdasarkan folder_id + Fitur SEARCH
 app.get('/api/folders', (req, res) => {
     const parentId = req.query.parentId === 'root' || !req.query.parentId ? null : parseInt(req.query.parentId);
     const search = req.query.search ? `%${req.query.search}%` : null;
@@ -107,7 +107,7 @@ app.get('/api/all-folders', (req, res) => {
     });
 });
 
-// [READ IMAGE / FILE PREVIEW] Streaming data objek langsung ke browser (Poin Bonus Rubrik)
+// [READ IMAGE / FILE PREVIEW] Streaming data objek langsung ke browser
 app.get('/api/view/:key', (req, res) => {
     const { key } = req.params;
     db.get('SELECT mime_type FROM files WHERE minio_key = ?', [key], (err, row) => {
@@ -121,7 +121,7 @@ app.get('/api/view/:key', (req, res) => {
     });
 });
 
-// [CREATE] Buat Folder Baru (SUDAH DIPERBAIKI UNTUK NESTED FOLDER)
+// [CREATE] Buat Folder Baru
 app.post('/api/folders', (req, res) => {
     const { name, parent_id, parentId } = req.body;
     
