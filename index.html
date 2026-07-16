@@ -95,8 +95,7 @@
     </div>
 
     <script>
-        // const API_URL = 'http://10.20.3.232:3000/api';
-        const API_URL = 'http://localhost:3000/api';
+        const API_URL = `${window.location.origin}/api`;
         
         let currentFolderId = null;
         let allFolders = [];
@@ -353,50 +352,94 @@
             toggleNewMenu();
             const name = prompt("Masukkan nama folder baru:");
             if (!name || !name.trim()) return;
+            
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
+            
             try {
-                await fetch(`${API_URL}/folders`, {
+                const response = await fetch(`${API_URL}/folders`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: name.trim(), parentId: currentFolderId })
                 });
+                
+                loading.classList.add('hidden');
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    alert(errorData.error || "Gagal membuat folder");
+                    return;
+                }
+
                 await loadContent();
                 showToast("Folder baru sukses dibuat! 📁");
-            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
+            } catch (e) { 
+                console.error(e); 
+                loading.classList.add('hidden');
+            }
         }
 
         async function uploadFiles() {
             toggleNewMenu();
             const input = document.getElementById('fileInput');
             if (input.files.length === 0) return;
+            
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
+            
             const formData = new FormData();
             formData.append('folderId', currentFolderId || 'null');
             for (let i = 0; i < input.files.length; i++) { formData.append('files', input.files[i]); }
+            
             try {
-                await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
+                const response = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
+                
+                loading.classList.add('hidden');
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    alert(errorData.error || "Gagal mengunggah berkas");
+                    input.value = '';
+                    return;
+                }
+
                 input.value = '';
                 await loadContent();
                 showToast("Berkas berhasil diupload! 🚀");
-            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
+            } catch (e) { 
+                console.error(e); 
+                loading.classList.add('hidden');
+            }
         }
 
         async function renameItem(type, id, oldName) {
             const name = prompt(`Ubah nama menjadi:`, oldName);
             if (!name || !name.trim() || name === oldName) return;
+            
             const loading = document.getElementById('uxLoading');
             loading.classList.remove('hidden');
+            
             try {
-                await fetch(`${API_URL}/rename`, {
+                const response = await fetch(`${API_URL}/rename`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type, id, name: name.trim() })
                 });
+
+                loading.classList.add('hidden');
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    alert(errorData.error || "Gagal merubah nama");
+                    return;
+                }
+
                 await loadContent();
                 showToast("Item berhasil diganti nama! ✏️");
-            } catch (e) { console.error(e); } finally { loading.classList.add('hidden'); }
+            } catch (e) { 
+                console.error(e); 
+                loading.classList.add('hidden');
+            }
         }
 
         async function moveItem(type, id, targetFolderId) {

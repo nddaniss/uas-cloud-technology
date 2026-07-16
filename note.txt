@@ -1,0 +1,16 @@
+Sebelum mencoba pastikan sudah mendownload MINIO dan sqlite3, jika belum maka lakukan hal di bawah ini.
+1. Buka 2 CMD/Terminal di laptop, di CMD pertama ketik docker run -p 9010:9000 -p 9011:9001 -e "MINIO_ROOT_USER=admin" -e "MINIO_ROOT_PASSWORD=password123" minio/minio server /data --console-address ":9001", setelah itu tunggu sampai proses download berhasil.
+2. Lalu, buka browser http://localhost:9011 dan masukkan usn: admin serta pw: password123. Setelah berhasil masuk, create bucket dengan nama 'google-drive-minio-v2'.
+3. Kemudian, di CMD/Terminal kedua ketik npm install sqlite3.
+4. Lalu, bisa pull project dari link github dan buka vscode di folder tersebut.
+5. Buka Terminal/CMD di VS Code, lalu pastikan posisi direktori kamu sudah berada di dalam folder proyek hasil unduhan GitHub tersebut.
+Bash
+cd uas-cloud-technology
+6. Karena file-file library (node_modules) tidak ikut di-upload ke GitHub, kamu harus mengunduhnya ulang agar kodenya bisa berjalan:
+Bash
+npm install
+7. Untuk melihat mini google drive di website, nyalakan Docker Desktop yang bernama uas-cloud-technology.
+8. Pada terminal VSCode silakan siapkan 2 terminal.
+9. Pada terminal pertama ketik docker compose up -d
+10. Terminal kedua ketik node index.js
+11. Lalu bisa di cek di browser dengan ketik http://localhost:3000 jika memakai localhost, atau http://ip4 address wifi:3000 jika memakai wifi agar bisa akses banyak device.

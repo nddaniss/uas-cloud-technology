@@ -121,22 +121,36 @@ app.get('/api/view/:key', (req, res) => {
     });
 });
 
-// [CREATE] Buat Folder Baru
+// [CREATE] Buat Folder Baru dengan Pengecekan Duplikasi
 app.post('/api/folders', (req, res) => {
     const { name, parent_id, parentId } = req.body;
     
-    // Validasi input: mendukung penamaan parent_id (snake_case) maupun parentId (camelCase)
     const actualParent = (parent_id === 'root' || parentId === 'root') 
         ? null 
         : (parent_id || parentId || null);
 
-    db.run('INSERT INTO folders (name, parent_id) VALUES (?, ?)', [name, actualParent], function(err) {
+    // Kueri SQL pengecekan duplikasi nama di tingkat direktori yang sama
+    const checkSql = actualParent 
+        ? 'SELECT id FROM folders WHERE name = ? AND parent_id = ?' 
+        : 'SELECT id FROM folders WHERE name = ? AND parent_id IS NULL';
+    const checkParams = actualParent ? [name, actualParent] : [name];
+
+    db.get(checkSql, checkParams, (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ id: this.lastID, name, parent_id: actualParent });
+        
+        // Kirim error status 400 jika nama sudah ada
+        if (row) {
+            return res.status(400).json({ error: `Folder dengan nama "${name}" sudah ada di direktori ini.` });
+        }
+
+        db.run('INSERT INTO folders (name, parent_id) VALUES (?, ?)', [name, actualParent], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID, name, parent_id: actualParent });
+        });
     });
 });
 
-// [CREATE] Upload Banyak File Sekaligus (Multi-user Safe)
+// [CREATE] Upload Banyak File Sekaligus dengan Proteksi Nama Unik per File
 app.post('/api/upload', upload.array('files'), async (req, res) => {
     if (!req.files || req.files.length === 0) {
         return res.status(400).json({ message: "Tidak ada file yang diunggah." });
@@ -144,6 +158,26 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
     const folderId = req.body.folderId && req.body.folderId !== 'null' ? parseInt(req.body.folderId) : null;
     
     try {
+        // Fase 1: Validasi seluruh file terlebih dahulu sebelum melakukan upload fisik ke MinIO
+        for (let file of req.files) {
+            const checkSql = folderId 
+                ? 'SELECT id FROM files WHERE name = ? AND folder_id = ?' 
+                : 'SELECT id FROM files WHERE name = ? AND folder_id IS NULL';
+            const checkParams = folderId ? [file.originalname, folderId] : [file.originalname];
+
+            const duplicate = await new Promise((resolve, reject) => {
+                db.get(checkSql, checkParams, (err, row) => {
+                    if (err) reject(err);
+                    resolve(row);
+                });
+            });
+
+            if (duplicate) {
+                return res.status(400).json({ error: `Berkas dengan nama "${file.originalname}" sudah ada di folder ini.` });
+            }
+        }
+
+        // Fase 2: Jalankan upload jika semua berkas dipastikan aman dari nama ganda
         for (let file of req.files) {
             const minioKey = `${Date.now()}-${file.originalname}`;
             await minioClient.putObject(BUCKET_NAME, minioKey, file.buffer, file.size, { 
@@ -160,13 +194,37 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
     }
 });
 
-// [UPDATE] Rename Nama Folder / File
+// [UPDATE] Rename Nama Folder / File dengan Validasi Keunikan
 app.put('/api/rename', (req, res) => {
     const { type, id, name } = req.body;
     const table = type === 'folder' ? 'folders' : 'files';
-    db.run(`UPDATE ${table} SET name = ? WHERE id = ?`, [name, id], function(err) {
+    const parentField = type === 'folder' ? 'parent_id' : 'folder_id';
+
+    // 1. Dapatkan relasi kontainer/parent dari item tersebut terlebih dahulu
+    db.get(`SELECT ${parentField} FROM ${table} WHERE id = ?`, [id], (err, currentItem) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: "Berhasil diubah namanya!" });
+        if (!currentItem) return res.status(404).json({ error: "Item tidak ditemukan." });
+
+        const currentParent = currentItem[parentField];
+
+        // 2. Cek apakah ada target bernama serupa di direktori yang sama (kecuali dirinya sendiri)
+        const checkSql = currentParent
+            ? `SELECT id FROM ${table} WHERE name = ? AND ${parentField} = ? AND id != ?`
+            : `SELECT id FROM ${table} WHERE name = ? AND ${parentField} IS NULL AND id != ?`;
+        const checkParams = currentParent ? [name, currentParent, id] : [name, id];
+
+        db.get(checkSql, checkParams, (err, duplicate) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (duplicate) {
+                return res.status(400).json({ error: `Nama "${name}" sudah digunakan di folder ini.` });
+            }
+
+            // 3. Jalankan pembaruan jika tidak terjadi bentrok data
+            db.run(`UPDATE ${table} SET name = ? WHERE id = ?`, [name, id], function(err) {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ message: "Berhasil diubah namanya!" });
+            });
+        });
     });
 });
 
@@ -226,6 +284,6 @@ app.listen(3000, '0.0.0.0', () => {
     console.log('==================================================');
     console.log('Backend Mini Google Drive Berjalan!');
     console.log('Akses Lokal     : http://localhost:3000');
-    console.log('Akses Jaringan  : http://10.20.3.232:3000');
+    console.log('Akses Jaringan  : http://172.16.3.246:3000');
     console.log('==================================================');
 });
